@@ -47,7 +47,13 @@ def extract_facial_features(image_path):
             np.linalg.norm(points[27] - points[33]),   # Chiều dài sống mũi
             np.linalg.norm(points[31] - points[35]),   # Chiều rộng mũi
             np.linalg.norm(points[0] - points[16]) / np.linalg.norm(points[8] - points[27]),  # Tỉ lệ mặt
-            np.arctan2(points[8][1] - points[0][1], points[8][0] - points[0][0])  # Độ dốc hàm
+            np.arctan2(points[8][1] - points[0][1], points[8][0] - points[0][0]),  # Độ dốc hàm
+            #đặc trưng thêm người già
+            np.linalg.norm(points[43] - points[47]) - np.linalg.norm(points[37] - points[41]), #độ sụp mí
+            # np.mean(gray[points[37][1]:points[41][1], points[37][0]:points[41][0]]), #nếp nhăn quanh mắt
+            np.linalg.norm(points[1] - points[14]), #gò má, má hóp
+            np.linalg.norm(points[8] - points[10]),  # Khoảng cách từ cằm đến một điểm trên cằm (ví dụ điểm 10)
+            np.linalg.norm(points[8] - points[17])  # Khoảng cách giữa cằm và điểm trên cổ (ví dụ điểm 17)
         ]
         return np.array(features)
 
@@ -63,7 +69,7 @@ def load_data():
 
     cursor.execute("SELECT path, eye_distance, left_eyebrow_length, right_eyebrow_length, brow_distance, "
                    "mouth_width, mouth_height, left_eye_opening, right_eye_opening, "
-                   "nose_length, nose_width, face_ratio, jaw_slope FROM face_features")
+                   "nose_length, nose_width, face_ratio, jaw_slope, eyelid_droop, cheek_bone, chin_distance, neck_distance FROM face_features")
     
     rows = cursor.fetchall()
     paths = [row[0] for row in rows]
@@ -143,7 +149,8 @@ def find_nearest_image(query_point, k, query_path):
         img = ImageTk.PhotoImage(img)
         result_image_labels[i].config(image=img)
         result_image_labels[i].image = img
-        result_labels[i].config(text=f"Ảnh gần thứ {i+1}: {paths[result_idx[i]]}\nKhoảng cách: {result_dist[i]:.2f}")
+        # result_labels[i].config(text=f"Ảnh gần thứ {i+1}: {paths[result_idx[i]]}\nKhoảng cách: {result_dist[i]:.2f}")
+        result_labels[i].config(text=f"Ảnh giống thứ {i+1} \nKhoảng cách: {result_dist[i]:.2f}")
 
 
 # 🔹 Hàm chọn ảnh từ máy tính
@@ -172,7 +179,7 @@ kd_tree = KDTree(data)
 
 # 🔹 Giao diện Tkinter
 root = tk.Tk()
-root.title("Tìm kiếm ảnh bằng KD-tree")
+root.title("Tìm kiếm ảnh giống nhất")
 
 # btn_choose = tk.Button(root, text="Chọn ảnh", command=choose_image)
 # btn_choose.pack(pady=10)
@@ -189,6 +196,53 @@ root.title("Tìm kiếm ảnh bằng KD-tree")
 
 # root.mainloop()
 
+
+
+#v2
+# # Nút chọn ảnh
+# btn_choose = tk.Button(root, text="Chọn ảnh", command=choose_image)
+# btn_choose.pack(pady=10)
+
+# # Ảnh đầu vào
+# input_image_label = tk.Label(root)
+# input_image_label.pack(pady=5)
+
+# # Canvas + Scrollbar
+# scroll_frame = tk.Frame(root)
+# scroll_frame.pack(fill=tk.BOTH, expand=True)
+
+# canvas = tk.Canvas(scroll_frame, width=600, height=600)
+# scrollbar = tk.Scrollbar(scroll_frame, orient="vertical", command=canvas.yview)
+# scrollable_frame = tk.Frame(canvas)
+
+# scrollable_frame.bind(
+#     "<Configure>",
+#     lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+# )
+
+# canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+# canvas.configure(yscrollcommand=scrollbar.set)
+
+# canvas.pack(side="left", fill="both", expand=True)
+# scrollbar.pack(side="right", fill="y")
+
+# # Kết quả ảnh và label (có thể mở rộng số lượng)
+# result_labels = []
+# result_image_labels = []
+# NUM_RESULTS = 3  # có thể tăng lên 10, 20 nếu muốn
+
+# for i in range(NUM_RESULTS):
+#     lbl = tk.Label(scrollable_frame, text="", fg="blue")
+#     lbl.pack(pady=5)
+#     img_lbl = tk.Label(scrollable_frame)
+#     img_lbl.pack(pady=5)
+
+#     result_labels.append(lbl)
+#     result_image_labels.append(img_lbl)
+
+# root.mainloop()
+
+#v3
 # Nút chọn ảnh
 btn_choose = tk.Button(root, text="Chọn ảnh", command=choose_image)
 btn_choose.pack(pady=10)
@@ -197,37 +251,42 @@ btn_choose.pack(pady=10)
 input_image_label = tk.Label(root)
 input_image_label.pack(pady=5)
 
-# Canvas + Scrollbar
+# Frame chứa canvas và scrollbar
 scroll_frame = tk.Frame(root)
 scroll_frame.pack(fill=tk.BOTH, expand=True)
 
-canvas = tk.Canvas(scroll_frame, width=600, height=600)
-scrollbar = tk.Scrollbar(scroll_frame, orient="vertical", command=canvas.yview)
+canvas = tk.Canvas(scroll_frame, width=700, height=300)  # có thể chỉnh chiều cao cho phù hợp
+scrollbar = tk.Scrollbar(scroll_frame, orient="horizontal", command=canvas.xview)
+
 scrollable_frame = tk.Frame(canvas)
 
-scrollable_frame.bind(
-    "<Configure>",
-    lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-)
+# Khi frame bên trong thay đổi kích thước, cập nhật vùng scroll của canvas
+def on_frame_configure(event):
+    canvas.configure(scrollregion=canvas.bbox("all"))
+
+scrollable_frame.bind("<Configure>", on_frame_configure)
 
 canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-canvas.configure(yscrollcommand=scrollbar.set)
+canvas.configure(xscrollcommand=scrollbar.set)
 
-canvas.pack(side="left", fill="both", expand=True)
-scrollbar.pack(side="right", fill="y")
+canvas.pack(side="top", fill="both", expand=True)
+scrollbar.pack(side="bottom", fill="x")
 
-# Kết quả ảnh và label (có thể mở rộng số lượng)
+# Kết quả ảnh và label (hiển thị theo hàng ngang)
 result_labels = []
 result_image_labels = []
 NUM_RESULTS = 3  # có thể tăng lên 10, 20 nếu muốn
 
 for i in range(NUM_RESULTS):
     lbl = tk.Label(scrollable_frame, text="", fg="blue")
-    lbl.pack(pady=5)
     img_lbl = tk.Label(scrollable_frame)
-    img_lbl.pack(pady=5)
+
+    # Dùng grid để sắp xếp theo hàng ngang
+    lbl.grid(row=0, column=i, padx=10, pady=5)
+    img_lbl.grid(row=1, column=i, padx=10, pady=5)
 
     result_labels.append(lbl)
     result_image_labels.append(img_lbl)
 
 root.mainloop()
+
